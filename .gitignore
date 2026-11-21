@@ -1,0 +1,6 @@
+*.ps1
+.vscode/
+.DS_Store
+Thumbs.db
+Bugs.txt
+commit_messages.txt

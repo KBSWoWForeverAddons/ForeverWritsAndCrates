@@ -1,0 +1,14 @@
+# .curseignore
+# Excluded from CurseForge release zips (still tracked in git).
+
+.agent/
+.agents/
+.antigravity/
+.github/
+.githooks/
+.vscode/
+*.ps1
+.curseignore
+*.md
+!/README.md
+!/CHANGELOG.md
