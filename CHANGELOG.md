@@ -1,5 +1,12 @@
 # Changelog
 
+## [v1.2.0] - 2026-11-21
+
+### Added
+- **Show: Bags** mode on the Auction House **Crates** tab — filters to unfilled crates currently in your bags, ranks them by best fill gold per Merchant's Favor, and displays `[In Bag]` / `[In Bag xN]` along with owned fill-material counts.
+- Targeted bag-crate scanning: clicking **Scan** while in **Show: Bags** mode (or running `/fwc scan bagcrates`) scans only the unfilled crates in your bags and their fill items.
+- **Merchant's Favor** tooltip line on **Sealed** / completed Waylaid Crates (e.g., `Sealed Journeyman Crate`, `Sealed Expert Crate`) showing how much Merchant's Favor they reward upon turn-in.
+
 ## [v1.1.0] - 2026-11-21
 
 ### Added

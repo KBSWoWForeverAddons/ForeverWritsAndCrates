@@ -79,7 +79,12 @@ function Scanner.StartQuick(scope)
 	end
 	scope = scope or (FWC.db and FWC.db.panelTab) or "writs"
 	local ids = FWC.AllItemIDs(scope)
-	if #ids == 0 then return false end
+	if #ids == 0 then
+		if scope == "bagcrates" then
+			FWC.Print("No unfilled crates found in your bags.")
+		end
+		return false
+	end
 
 	if FWC.BrowseAssist then FWC.BrowseAssist.Clear() end
 	active = NewJob("quick")

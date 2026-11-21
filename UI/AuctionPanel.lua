@@ -50,13 +50,23 @@ local function ItemWithOwned(itemID, count)
 end
 
 function Panel.AddCrateTooltipLines(tip, row)
-	if row.totalPerFavor then
-		tip:AddLine(string.format("Total per favor: %s%s / favor",
-			row.estimate and "~" or "", FWC.FormatMoney(row.totalPerFavor)), 1, 0.82, 0)
+	if row.bagCount and row.bagCount > 0 then
+		tip:AddLine(string.format("In bags: %d unfilled crate%s", row.bagCount, row.bagCount == 1 and "" or "s"), 0.25, 1, 0.5)
 	end
-	if row.total then
-		tip:AddLine(string.format("Total %s = crate %s + fill %s",
-			FWC.FormatMoney(row.total), QuoteShort(row.crateQuote), QuoteShort(row.fill)), 0.9, 0.9, 0.9, true)
+	if row.ownedMode then
+		if row.perFavor then
+			tip:AddLine(string.format("Fill per favor: %s%s / favor",
+				row.estimate and "~" or "", FWC.FormatMoney(row.perFavor)), 1, 0.82, 0)
+		end
+	else
+		if row.totalPerFavor then
+			tip:AddLine(string.format("Total per favor: %s%s / favor",
+				row.estimate and "~" or "", FWC.FormatMoney(row.totalPerFavor)), 1, 0.82, 0)
+		end
+		if row.total then
+			tip:AddLine(string.format("Total %s = crate %s + fill %s",
+				FWC.FormatMoney(row.total), QuoteShort(row.crateQuote), QuoteShort(row.fill)), 0.9, 0.9, 0.9, true)
+		end
 	end
 	tip:AddLine("Fill options:", 1, 0.82, 0)
 	for _, q in ipairs(row.bundles or {}) do
@@ -116,11 +126,18 @@ local function WritSortMode()
 	return "fastest"
 end
 
+local function CrateMode()
+	return (FWC.db and FWC.db.crateMode == "bags") and "bags" or "all"
+end
+
 local lastBagAnchorCount = 0
 
 local function BuildRows()
 	local book = FWC.Prices()
 	if ActiveTab() == "crates" then
+		if CrateMode() == "bags" then
+			return FWC.Valuation.EvaluateOwnedCrates(book)
+		end
 		return FWC.Valuation.EvaluateAllCrates(book)
 	end
 
@@ -318,17 +335,28 @@ local function InitRow(btn, row)
 
 	elseif row.kind == "crate" then
 		btn.Icon:SetTexture(info.icon or FWC.CRATE_ICON)
-		btn.Name:SetText(info.name or ("#" .. row.id))
+		local namePrefix = ""
+		if row.bagCount and row.bagCount > 0 then
+			namePrefix = (row.bagCount > 1)
+				and string.format("|cff40ff40[In Bag x%d]|r ", row.bagCount)
+				or "|cff40ff40[In Bag]|r "
+		end
+		btn.Name:SetText(namePrefix .. (info.name or ("#" .. row.id)))
 		btn.Name:SetTextColor(r, g, b)
-		btn.RightTop:SetText(row.totalPerFavor and ((row.estimate and "~" or "") .. FWC.FormatMoney(row.totalPerFavor) .. "/fav") or "-")
-		if row.total then
-			btn.Line2:SetText(string.format("Total %s = crate %s + fill %s",
-				FWC.FormatMoney(row.total), QuoteShort(row.crateQuote), QuoteShort(row.fill)))
+		if row.ownedMode then
+			btn.RightTop:SetText(row.perFavor and ((row.estimate and "~" or "") .. FWC.FormatMoney(row.perFavor) .. "/fav") or "-")
+			btn.Line2:SetText("Best fill: " .. (row.fill and QuoteDetail(row.fill) or "unknown"))
 		else
-			btn.Line2:SetText(string.format("Crate %s, fill %s", QuoteShort(row.crateQuote), QuoteShort(row.fill)))
+			btn.RightTop:SetText(row.totalPerFavor and ((row.estimate and "~" or "") .. FWC.FormatMoney(row.totalPerFavor) .. "/fav") or "-")
+			if row.total then
+				btn.Line2:SetText(string.format("Total %s = crate %s + fill %s",
+					FWC.FormatMoney(row.total), QuoteShort(row.crateQuote), QuoteShort(row.fill)))
+			else
+				btn.Line2:SetText(string.format("Crate %s, fill %s", QuoteShort(row.crateQuote), QuoteShort(row.fill)))
+			end
 		end
 		if row.fill and row.fill.item then
-			btn.Line3:SetText(string.format("Fill: %dx %s", row.fill.count, FWC.ItemName(row.fill.item)))
+			btn.Line3:SetText("Fill: " .. ItemWithOwned(row.fill.item, row.fill.count))
 		else
 			btn.Line3:SetText("")
 		end
@@ -418,11 +446,26 @@ local function EnsurePanel()
 	scanBtn:SetScript("OnClick", function()
 		if FWC.Scanner.IsRunning() then
 			FWC.Scanner.Cancel("Scan stopped.")
+		elseif ActiveTab() == "crates" and CrateMode() == "bags" then
+			FWC.Scanner.StartQuick("bagcrates")
 		else
 			FWC.Scanner.StartQuick(ActiveTab())
 		end
 		Panel.Refresh()
 	end)
+	scanBtn:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:AddLine("Scan Auction House", 1, 0.82, 0)
+		if ActiveTab() == "crates" and CrateMode() == "bags" then
+			GameTooltip:AddLine("Scans prices for unfilled crates currently in your bags and their fill materials.", 1, 1, 1, true)
+		elseif ActiveTab() == "crates" then
+			GameTooltip:AddLine("Scans prices for all Waylaid Crates and their fill materials.", 1, 1, 1, true)
+		else
+			GameTooltip:AddLine("Scans prices for all Writs and their required items.", 1, 1, 1, true)
+		end
+		GameTooltip:Show()
+	end)
+	scanBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	f.ScanBtn = scanBtn
 
 	local sortBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -446,6 +489,27 @@ local function EnsurePanel()
 	end)
 	sortBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	f.SortBtn = sortBtn
+
+	local crateModeBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+	crateModeBtn:SetSize(84, 22)
+	crateModeBtn:SetPoint("RIGHT", scanBtn, "LEFT", -4, 0)
+	crateModeBtn:SetText("Show: All")
+	crateModeBtn:SetScript("OnClick", function()
+		if FWC.db then
+			FWC.db.crateMode = (CrateMode() == "bags") and "all" or "bags"
+		end
+		Panel.Refresh()
+	end)
+	crateModeBtn:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:AddLine("Crate List & Scan Mode", 1, 0.82, 0)
+		GameTooltip:AddLine("Click to toggle between:", 1, 1, 1)
+		GameTooltip:AddLine("• Show: All — all crates, sorted by total gold / favor (crate + fill)", 0.4, 0.9, 1, true)
+		GameTooltip:AddLine("• Show: Bags — only unfilled crates in your bags, sorted by best fill gold / favor (Scan also targets only bag crates)", 0.25, 1, 0.5, true)
+		GameTooltip:Show()
+	end)
+	crateModeBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	f.CrateModeBtn = crateModeBtn
 
 	-- Bottom bar: Planner button, Bag Route button, Auctionator source info
 	local planBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -537,9 +601,14 @@ function Panel.Refresh()
 
 	local isWrits = (tab == "writs")
 	local mode = WritSortMode()
+	local cMode = CrateMode()
 	panelFrame.SortBtn:SetShown(isWrits)
 	if isWrits then
 		panelFrame.SortBtn:SetText(SORT_LABELS[mode] or "Sort: Fast")
+	end
+	panelFrame.CrateModeBtn:SetShown(not isWrits)
+	if not isWrits then
+		panelFrame.CrateModeBtn:SetText(cMode == "bags" and "Show: Bags" or "Show: All")
 	end
 
 	local rows = panelFrame:IsShown() and BuildRows() or nil
@@ -552,7 +621,14 @@ function Panel.Refresh()
 		local line1 = book.at and ("Scanned " .. FWC.FormatAge(time() - book.at)) or "Not scanned yet."
 		local line2
 		if not isWrits then
-			line2 = "Sorted by gold / favor"
+			if cMode == "bags" then
+				local n = rows and #rows or #FWC.OwnedCrates()
+				line2 = (n > 0)
+					and string.format("Bag crates (%d): best fill / favor", n)
+					or "No unfilled crates in bags"
+			else
+				line2 = "Sorted by gold / favor"
+			end
 		elseif mode == "nearbags" then
 			line2 = (lastBagAnchorCount > 0)
 				and string.format("Closest to your %d bag writ(s)", lastBagAnchorCount)
@@ -565,7 +641,8 @@ function Panel.Refresh()
 		panelFrame.Status:SetText(line1 .. "\n" .. line2)
 	end
 
-	local stats = FWC.PricesStats(tab)
+	local statsScope = isWrits and "writs" or (cMode == "bags" and "bagcrates" or "crates")
+	local stats = FWC.PricesStats(statsScope)
 	if stats and stats.used > 0 then
 		panelFrame.Source:SetText(string.format("Auctionator: %d/%d (%s)", stats.used, stats.total, FWC.SeenText(stats.newest)))
 		panelFrame.Source:Show()

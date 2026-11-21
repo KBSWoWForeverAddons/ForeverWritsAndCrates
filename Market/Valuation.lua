@@ -100,6 +100,7 @@ function V.EvaluateCrate(book, crate)
 	end
 	row.fill = best
 	row.crateQuote = V.Quote(book.items[crate.id], 1)
+	row.bagCount = FWC.BagCount(crate.id)
 	row.quality = FWC.ItemQuality(crate.id, crate.quality)
 	row.tier = crate.tier
 	row.favor = FWC.CrateFavor(crate)
@@ -215,6 +216,18 @@ end
 function V.EvaluateAllCrates(book)
 	local rows = {}
 	for _, c in ipairs(FWC.Crates()) do rows[#rows + 1] = V.EvaluateCrate(book, c) end
+	return V.SortByCost(rows)
+end
+
+function V.EvaluateOwnedCrates(book)
+	local rows = {}
+	for _, c in ipairs(FWC.OwnedCrates()) do
+		local row = V.EvaluateCrate(book, c)
+		row.ownedMode = true
+		row.score = row.perFavor
+		row.estimate = (row.fill ~= nil and row.fill.cost ~= nil and not row.fill.exact)
+		rows[#rows + 1] = row
+	end
 	return V.SortByCost(rows)
 end
 

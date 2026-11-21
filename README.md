@@ -1,4 +1,4 @@
-# Forever Writs and Crates (`v1.1.0`)
+# Forever Writs and Crates (`v1.2.0`)
 
 A World of Warcraft: Forever addon for **Waylaid Crates** and **Craftsman's Writs** (Azeroth Commerce Authority / Durotar Supply and Logistics).
 
@@ -29,7 +29,7 @@ A World of Warcraft: Forever addon for **Waylaid Crates** and **Craftsman's Writ
 | `/fwc route` | Create a turn-in route for writs in your bags (plus selected completed quests) |
 | `/fwc guide` | Toggle the Route Guide window |
 | `/fwc panel` | Toggle the Auction House side panel |
-| `/fwc scan [writs\|crates\|all]` | Scan the Auction House |
+| `/fwc scan [writs\|crates\|bagcrates\|all]` | Scan the Auction House |
 | `/fwc quests` | Toggle including completed quest turn-ins in routes |
 | `/fwc auto` | Toggle auto-accept & auto-turn-in for Craftsman's Writs |
 | `/fwc minimap` | Show or hide the minimap button |

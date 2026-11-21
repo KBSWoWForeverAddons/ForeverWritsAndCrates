@@ -133,6 +133,7 @@ function FWC.InitDB()
 	if db.panelShown == nil then db.panelShown = true end
 	if db.panelTab ~= "writs" and db.panelTab ~= "crates" then db.panelTab = "writs" end
 	if db.writSort ~= "fastest" and db.writSort ~= "cheapest" and db.writSort ~= "nearbags" then db.writSort = "fastest" end
+	if db.crateMode ~= "all" and db.crateMode ~= "bags" then db.crateMode = "all" end
 	if db.autoQuest == nil then db.autoQuest = true end
 	if db.includeCompletedQuests == nil then db.includeCompletedQuests = true end
 	db.realms = type(db.realms) == "table" and db.realms or {}
@@ -218,6 +219,16 @@ end
 function FWC.Crates() return (FWC.Data and FWC.Data.Crates) or {} end
 function FWC.WritsList() return (FWC.Data and FWC.Data.Writs) or {} end
 
+function FWC.OwnedCrates()
+	local out = {}
+	for _, c in ipairs(FWC.Crates()) do
+		if FWC.BagCount(c.id) > 0 then
+			out[#out + 1] = c
+		end
+	end
+	return out
+end
+
 function FWC.GetCrate(id)
 	EnsureIndexes()
 	return crateByID and crateByID[id] or nil
@@ -272,6 +283,8 @@ function FWC.AllItemIDs(scope)
 	end
 	if scope == "crates" or scope == "all" then
 		for _, c in ipairs(FWC.Crates()) do addEntry(c) end
+	elseif scope == "bagcrates" then
+		for _, c in ipairs(FWC.OwnedCrates()) do addEntry(c) end
 	end
 	if scope == "writs" or scope == "all" then
 		for _, w in ipairs(FWC.WritsList()) do addEntry(w) end
@@ -891,7 +904,7 @@ local function PrintHelp()
 	FWC.Print("  |cffffd100/fwc route|r - build a turn-in route for writs currently in your bags")
 	FWC.Print("  |cffffd100/fwc guide|r - show or hide the Route Guide window")
 	FWC.Print("  |cffffd100/fwc panel|r - toggle the Auction House side panel")
-	FWC.Print("  |cffffd100/fwc scan [crates|writs|all]|r - scan Auction House prices")
+	FWC.Print("  |cffffd100/fwc scan [crates|bagcrates|writs|all]|r - scan Auction House prices")
 	FWC.Print("  |cffffd100/fwc quests|r - toggle including completed quest turn-ins in routes")
 	FWC.Print("  |cffffd100/fwc auto|r - toggle auto-accept & auto-turn-in for writs")
 	FWC.Print("  |cffffd100/fwc minimap|r - show or hide the minimap button")
@@ -937,7 +950,14 @@ SlashCmdList["FOREVERWRITS"] = function(msg)
 		end
 	elseif cmd == "scan" then
 		if FWC.AuctionHouseOpen() and FWC.Scanner then
-			local scope = (rest == "crates" or rest == "writs" or rest == "all") and rest or (FWC.db.panelTab or "writs")
+			local scope
+			if rest == "crates" or rest == "bagcrates" or rest == "writs" or rest == "all" then
+				scope = rest
+			elseif FWC.db.panelTab == "crates" and FWC.db.crateMode == "bags" then
+				scope = "bagcrates"
+			else
+				scope = FWC.db.panelTab or "writs"
+			end
 			FWC.Scanner.StartQuick(scope)
 		else
 			FWC.Print("Open the Auction House first.")
