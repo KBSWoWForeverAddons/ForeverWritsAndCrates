@@ -328,6 +328,9 @@ end
 --------------------------------------------------------------------------------
 function Guide.Refresh()
 	if not guideFrame or not FWC.charDB then return end
+	-- Never advance steps or spawn TomTom/map waypoints while the Route Guide is hidden!
+	if not guideFrame:IsShown() then return end
+
 	local list = Steps()
 	local cur = 1
 	while list[cur] and IsStepDone(cur) do cur = cur + 1 end
@@ -340,7 +343,7 @@ function Guide.Refresh()
 	if cur ~= lastStepIdx then
 		lastStepIdx = cur
 		scrollOffset = 0
-		SetWaypoint(list[cur])
+		SetWaypoint(#list > 0 and list[cur] or nil)
 	end
 
 	local y = -4
@@ -441,6 +444,8 @@ function Guide.Hide()
 	if FWC.charDB then FWC.charDB.guideShown = false end
 	if guideFrame then guideFrame:Hide() end
 	if arrowFrame then arrowFrame:Hide() end
+	lastStepIdx = nil
+	SetWaypoint(nil)
 end
 
 function Guide.Toggle()
@@ -498,5 +503,71 @@ FWC.On("PLAYER_LOGIN", function()
 	end
 end)
 
-FWC.On("QUEST_TURNED_IN", function() FWC.After(0.4, Guide.Refresh) end)
+-- Re-optimize remaining stops in the active route from the player's current position
+-- so you always finish nearby turn-ins in your current zone before leaving!
+function Guide.ReoptimizeFromHere()
+	if not (guideFrame and guideFrame:IsShown() and FWC.charDB) then return end
+	local list = Steps()
+	if #list == 0 then return end
+
+	-- Collect remaining uncompleted writ/quest stops from the current route
+	local remainingStops = {}
+	local seenQ = {}
+	for i, s in ipairs(list) do
+		if not IsStepDone(i) and (s.kind == "turnin" or s.kind == "questTurnin") and s.questID and not seenQ[s.questID] then
+			seenQ[s.questID] = true
+			if s.kind == "turnin" and s.writID then
+				local w = FWC.GetWrit(s.writID)
+				local loc = w and FWC.Writs.Location(w)
+				local pos = loc and FWC.Travel.Point(loc.map, loc.x or 50, loc.y or 50)
+				if w and pos then
+					remainingStops[#remainingStops + 1] = {
+						writ = w,
+						loc = loc,
+						pos = pos,
+						rep = FWC.Writs.Rep(w) or 0,
+						cost = 0,
+						owned = true,
+					}
+				end
+			elseif s.kind == "questTurnin" and s.map and s.x and s.y then
+				local pos = FWC.Travel.Point(s.map, s.x, s.y)
+				if pos then
+					remainingStops[#remainingStops + 1] = {
+						kind = "quest",
+						questID = s.questID,
+						title = s.label or "Quest",
+						loc = { map = s.map, x = s.x, y = s.y, zoneName = FWC.MapName(s.map), exact = true },
+						pos = pos,
+						rep = 0,
+						cost = 0,
+						owned = true,
+					}
+				end
+			end
+		end
+	end
+
+	if #remainingStops <= 1 then
+		Guide.Refresh()
+		return
+	end
+
+	local startPt = FWC.Travel.PlayerPoint()
+	if not startPt then
+		Guide.Refresh()
+		return
+	end
+	local ordered = FWC.RoutePlanner.OptimizeStops(startPt, remainingStops)
+	FWC.charDB.route = FWC.RoutePlanner.BuildGuideSteps(startPt, ordered)
+	FWC.charDB.manualSteps = {}
+	lastStepIdx = nil
+	Guide.Refresh()
+end
+
+FWC.On("QUEST_TURNED_IN", function()
+	FWC.After(0.5, function()
+		Guide.ReoptimizeFromHere()
+	end)
+end)
 FWC.On("ZONE_CHANGED_NEW_AREA", function() FWC.After(0.5, Guide.Refresh) end)

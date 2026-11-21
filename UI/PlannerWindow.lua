@@ -466,6 +466,7 @@ local function EnsureFrame()
 				(plan.questCount and plan.questCount > 0) and string.format(" + %d quest(s)", plan.questCount) or "",
 				FWC.FormatTime(plan.secs))
 		end
+		FWC.RoutePlanner.ReportSkipped(plan)
 	end)
 	f.BagRouteBtn = bagRouteBtn
 

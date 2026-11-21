@@ -291,6 +291,7 @@ local function OptimizeOrder(startPt, stops)
 	for i, idx in ipairs(order) do out[i] = stops[idx - 1] end
 	return out
 end
+Planner.OptimizeStops = OptimizeOrder
 
 local function BestLegTeleport(prev, targetPos, teleports, usedCooldownTp)
 	local legSecs = FWC.Travel.Time(prev, targetPos)
@@ -481,16 +482,18 @@ end
 --------------------------------------------------------------------------------
 function Planner.PlanOwnedWrits()
 	local book = FWC.Prices()
-	local usedToday = FWC.Writs.UsedCustomersToday()
 	local startPt = FWC.Travel.PlayerPoint()
-	local owned, byCustomer, skipped = {}, {}, {}
+	local owned, skipped = {}, {}
 
 	for _, w in ipairs(FWC.WritsList()) do
-		if WritOwned(w) and not FWC.Writs.IsTurnedInToday(w) then
-			owned[#owned + 1] = w
+		if WritOwned(w) then
+			if FWC.Writs.IsTurnedInToday(w) then
+				skipped[#skipped + 1] = { writ = w, reason = "already turned in today (wait for daily reset)" }
+			else
+				owned[#owned + 1] = w
+			end
 		end
 	end
-	-- Higher rep first if player holds two writs for the same customer
 	table.sort(owned, function(a, b)
 		local ra, rb = FWC.Writs.Rep(a) or 0, FWC.Writs.Rep(b) or 0
 		if ra ~= rb then return ra > rb end
@@ -510,29 +513,21 @@ function Planner.PlanOwnedWrits()
 				loc = FWC.Writs.Location(w)
 			end
 		end
-		local cKey = FWC.Writs.CustomerKey(w)
 		if not loc then
 			skipped[#skipped + 1] = { writ = w, reason = "Location unknown (accept writ first)" }
-		elseif usedToday[cKey] then
-			skipped[#skipped + 1] = { writ = w, reason = "Customer already used today" }
-		elseif byCustomer[cKey] then
-			skipped[#skipped + 1] = { writ = w, reason = "Same customer as another writ in bags" }
 		else
 			local pos = FWC.Travel.Point(loc.map, loc.x or 50, loc.y or 50)
 			if pos then
 				local netCost = NetWritCost(book, w) or 0
-				local stop = {
+				stops[#stops + 1] = {
 					writ = w,
 					loc = loc,
 					pos = pos,
-					cKey = cKey,
 					rep = FWC.Writs.Rep(w) or 0,
 					cost = netCost,
 					owned = true,
 					missingItems = MissingItemCount(w),
 				}
-				byCustomer[cKey] = stop
-				stops[#stops + 1] = stop
 			end
 		end
 	end
@@ -567,51 +562,47 @@ function Planner.PlanOwnedWrits()
 	}
 end
 
+function Planner.ReportSkipped(plan)
+	if not (plan and type(plan.skipped) == "table") then return end
+	for _, sk in ipairs(plan.skipped) do
+		FWC.Print("|cffffaa44Skipped|r %s: %s.", FWC.ItemName(sk.writ.id), sk.reason or "unavailable")
+	end
+end
+
 --------------------------------------------------------------------------------
 -- 2. Plan Fastest & Cheapest for Reputation Target (auto-populated by default!)
+--    Allows multiple different writs at the same NPC (1 of each unique writ/day).
 --------------------------------------------------------------------------------
 local function BuildCheapestSet(cands, needRep)
 	if needRep <= 0 then return {} end
 	local U = math.ceil(needRep / 25)
-	local groups, keys = {}, {}
-	for _, c in ipairs(cands) do
-		if not groups[c.cKey] then
-			groups[c.cKey] = {}
-			keys[#keys + 1] = c.cKey
-		end
-		groups[c.cKey][#groups[c.cKey] + 1] = c
-	end
-	table.sort(keys)
-
 	local INF = math.huge
 	local dp = { [0] = 0 }
 	for u = 1, U do dp[u] = INF end
 	local picks = {}
 
-	for gi, key in ipairs(keys) do
+	for ci, c in ipairs(cands) do
 		local ndp, pk = {}, {}
 		for u = 0, U do ndp[u] = dp[u] end
-		for _, c in ipairs(groups[key]) do
-			local r = math.floor(c.rep / 25)
-			for u = 0, U do
-				if dp[u] < INF then
-					local v = math.min(U, u + r)
-					if dp[u] + c.cost < ndp[v] then
-						ndp[v] = dp[u] + c.cost
-						pk[v] = { c = c, from = u }
-					end
+		local r = math.floor(c.rep / 25)
+		for u = 0, U do
+			if dp[u] < INF then
+				local v = math.min(U, u + r)
+				if dp[u] + c.cost < ndp[v] then
+					ndp[v] = dp[u] + c.cost
+					pk[v] = { c = c, from = u }
 				end
 			end
 		end
-		picks[gi] = pk
+		picks[ci] = pk
 		dp = ndp
 	end
 
 	local u = U
 	while u > 0 and dp[u] == INF do u = u - 1 end
 	local out = {}
-	for gi = #keys, 1, -1 do
-		local p = picks[gi][u]
+	for ci = #cands, 1, -1 do
+		local p = picks[ci][u]
 		if p then
 			out[#out + 1] = p.c
 			u = p.from
@@ -625,15 +616,15 @@ local function BuildFastestSet(startPt, ownedStops, cands, needRep)
 	local route = {}
 	for _, s in ipairs(ownedStops) do route[#route + 1] = s end
 
-	local usedKeys, chosen, rep = {}, {}, 0
+	local usedIDs, chosen, rep = {}, {}, 0
 	for _, s in ipairs(ownedStops) do
-		if s.cKey then usedKeys[s.cKey] = true end
+		if s.writ then usedIDs[s.writ.id] = true end
 	end
 
 	while rep < needRep do
 		local best, bestScore, bestAt = nil, math.huge, 1
 		for _, c in ipairs(cands) do
-			if not usedKeys[c.cKey] then
+			if not usedIDs[c.writ.id] then
 				local bestDt, at = math.huge, 1
 				for k = 1, #route + 1 do
 					local prevPt = (k == 1) and startPt or route[k - 1].pos
@@ -651,7 +642,7 @@ local function BuildFastestSet(startPt, ownedStops, cands, needRep)
 			end
 		end
 		if not best then break end
-		usedKeys[best.cKey] = true
+		usedIDs[best.writ.id] = true
 		table.insert(route, bestAt, best)
 		chosen[#chosen + 1] = best
 		rep = rep + best.rep
@@ -666,11 +657,10 @@ function Planner.PlanForStanding(targetStanding)
 	local needRep = FWC.Rep.NeededForStanding(status, target)
 
 	local book = FWC.Prices()
-	local usedToday = FWC.Writs.UsedCustomersToday()
 	local startPt = FWC.Travel.PlayerPoint()
 
-	-- Gather owned writs first (1 per customer)
-	local ownedStops, ownedKeys, ownedRep, ownedCost = {}, {}, 0, 0
+	-- Gather owned writs first (all unique writs not turned in today)
+	local ownedStops, ownedRep, ownedCost = {}, 0, 0
 	local ownedRaw = {}
 	for _, w in ipairs(FWC.WritsList()) do
 		if WritOwned(w) and not FWC.Writs.IsTurnedInToday(w) then
@@ -681,17 +671,15 @@ function Planner.PlanForStanding(targetStanding)
 
 	for _, w in ipairs(ownedRaw) do
 		local loc = FWC.Writs.Location(w)
-		local cKey = FWC.Writs.CustomerKey(w)
-		if loc and not usedToday[cKey] and not ownedKeys[cKey] then
+		if loc then
 			local pos = FWC.Travel.Point(loc.map, loc.x or 50, loc.y or 50)
 			local netCost = NetWritCost(book, w)
 			if pos and netCost then
 				local stop = {
-					writ = w, loc = loc, pos = pos, cKey = cKey,
+					writ = w, loc = loc, pos = pos,
 					rep = FWC.Writs.Rep(w) or 0, cost = netCost,
 					owned = true, missingItems = MissingItemCount(w),
 				}
-				ownedKeys[cKey] = true
 				ownedStops[#ownedStops + 1] = stop
 				ownedRep = ownedRep + stop.rep
 				ownedCost = ownedCost + stop.cost
@@ -704,13 +692,12 @@ function Planner.PlanForStanding(targetStanding)
 	for _, w in ipairs(FWC.WritsList()) do
 		if not WritOwned(w) and not FWC.Writs.IsTurnedInToday(w) then
 			local loc = FWC.Writs.Location(w)
-			local cKey = FWC.Writs.CustomerKey(w)
-			if loc and not usedToday[cKey] and not ownedKeys[cKey] then
+			if loc then
 				local pos = FWC.Travel.Point(loc.map, loc.x or 50, loc.y or 50)
 				local netCost = NetWritCost(book, w)
 				if pos and netCost then
 					cands[#cands + 1] = {
-						writ = w, loc = loc, pos = pos, cKey = cKey,
+						writ = w, loc = loc, pos = pos,
 						rep = FWC.Writs.Rep(w) or 0, cost = netCost,
 						owned = false, missingItems = MissingItemCount(w),
 					}
@@ -773,7 +760,7 @@ function Planner.PlanForStanding(targetStanding)
 end
 
 --------------------------------------------------------------------------------
--- 3. Per-Writ Travel Time Estimate (for sorting AH Writs tab by Fastest Travel)
+-- 3. Per-Writ Travel Time Estimates (Fastest Travel & Near Bag Writs)
 --------------------------------------------------------------------------------
 function Planner.EstimateWritTravelSecs(writ, startPt)
 	startPt = startPt or FWC.Travel.PlayerPoint()
@@ -782,4 +769,48 @@ function Planner.EstimateWritTravelSecs(writ, startPt)
 	local pos = FWC.Travel.Point(loc.map, loc.x or 50, loc.y or 50)
 	if not pos then return nil end
 	return FWC.Travel.Time(startPt, pos)
+end
+
+-- Returns turn-in anchor positions and customer keys for all writs currently in bags or quest log.
+function Planner.GetOwnedWritAnchors()
+	local anchors, ownedIDs, ownedCustomers = {}, {}, {}
+	for _, w in ipairs(FWC.WritsList()) do
+		if WritOwned(w) and not FWC.Writs.IsTurnedInToday(w) then
+			ownedIDs[w.id] = true
+			local cKey = FWC.Writs.CustomerKey(w)
+			if cKey then ownedCustomers[cKey] = FWC.ItemName(w.id) end
+			local loc = FWC.Writs.Location(w)
+			if not loc and w.quest and FWC.Writs.IsAccepted(w) then
+				local lm, lx, ly = LocateQuestTurnIn(w.quest)
+				if lm and lx and ly then
+					loc = { map = lm, x = lx, y = ly, zoneName = FWC.MapName(lm), exact = true }
+				end
+			end
+			if loc then
+				local pos = FWC.Travel.Point(loc.map, loc.x or 50, loc.y or 50)
+				if pos then
+					anchors[#anchors + 1] = { writ = w, loc = loc, pos = pos, cKey = cKey }
+				end
+			end
+		end
+	end
+	return { anchors = anchors, ownedIDs = ownedIDs, ownedCustomers = ownedCustomers }
+end
+
+-- Minimum travel time from ANY owned bag/quest-log writ to `writ`.
+function Planner.MinTravelFromAnchors(writ, anchorInfo)
+	if not (anchorInfo and anchorInfo.anchors and #anchorInfo.anchors > 0) then return nil end
+	local loc = FWC.Writs.Location(writ)
+	if not loc then return nil end
+	local pos = FWC.Travel.Point(loc.map, loc.x or 50, loc.y or 50)
+	if not pos then return nil end
+
+	local bestSecs, bestAnchor
+	for _, a in ipairs(anchorInfo.anchors) do
+		local t = FWC.Travel.Time(a.pos, pos)
+		if not bestSecs or t < bestSecs then
+			bestSecs, bestAnchor = t, a
+		end
+	end
+	return bestSecs, bestAnchor
 end

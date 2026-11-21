@@ -9,7 +9,7 @@ FWC.Travel = Travel
 local RIDE_SPEED = 11          -- yards/s (mounted/average travel speed)
 local FLY_SPEED = 29           -- yards/s (flight path average)
 local FLIGHT_OVERHEAD = 32     -- seconds to mount/take off/land
-local CROSSING_COST = 5        -- seconds for a zone crossing
+local CROSSING_COST = 25       -- seconds for crossing a zone border (prevents needless zone-hopping)
 local HOSTILE_PENALTY = 1200   -- avoid routing through enemy capitals
 
 local graphNodes = nil

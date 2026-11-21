@@ -1,4 +1,4 @@
-# Forever Writs and Crates (`v1.0.0`)
+# Forever Writs and Crates (`v1.1.0`)
 
 A World of Warcraft: Forever addon for **Waylaid Crates** and **Craftsman's Writs** (Azeroth Commerce Authority / Durotar Supply and Logistics).
 
@@ -6,12 +6,12 @@ A World of Warcraft: Forever addon for **Waylaid Crates** and **Craftsman's Writ
 
 - **Auction House Side Panel & One-Click Purchasing**
   - Attaches next to the Auction House with **Writs** and **Crates** tabs.
-  - **Writs tab** sorts by **Fastest Travel Time** by default (with a one-click toggle to **Cheapest Gold / 100 Rep**).
+  - **Writs tab** cycles between **Sort: Fast** (fastest travel time), **Sort: Bags** (closest in travel time to writs already in your bags/quest log), and **Sort: Cost** (cheapest gold / 100 rep).
   - Clicking any Crate or Writ opens the crate/writ **and all of its fill items together** in Blizzard's AH Browse list, highlights the cheapest fill material (or required writ item), and **automatically pre-fills the exact quantity needed**.
   - Built-in quick & exact AH scanner plus seamless **Auctionator** price integration.
 - **Auto-Populated Reputation Goal & Unified Planner (`/fwc`)**
   - Automatically detects your current supply faction standing and sets the **next standing** as your goal (e.g., Friendly → Honored) with no manual number entry.
-  - Compares **Fastest Route** vs. **Cheapest Plan** side-by-side (respecting 1 writ per customer per day and counting writs/items already in your bags).
+  - Compares **Fastest Route** vs. **Cheapest Plan** side-by-side (supporting 1 of each unique writ per day, stacking multiple different writs at the same NPC, and counting writs/items already in your bags).
   - Includes **Merchant's Favor** crate calculator, **By Zone** writ browser, and a **Quests** tab to selectively include open-world completed quest turn-ins (Dungeon & Raid quests excluded by default).
 - **Zero-Setup Travel Routing & Guided Turn-in Arrow**
   - Assumes **all faction flight paths, boats, and zeppelins** are available out of the box—no visiting flight masters first.

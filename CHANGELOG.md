@@ -1,5 +1,21 @@
 # Changelog
 
+## [v1.1.0] - 2026-11-21
+
+### Added
+- **Sort: Bags** mode in the Auction House Writs tab — ranks buyable writs by shortest hop time from writs already in your bags or quest log, displaying the detour time (e.g., `+18s`) on each row.
+- Automatic dynamic re-optimization of remaining stops after every writ or quest turn-in so nearby turn-ins in your current zone are always completed before leaving.
+- Clear chat messages explaining why any writ in your bags was skipped when building a bag route.
+
+### Changed
+- Updated daily writ tracking to **1 of each unique writ per day** (per quest ID), allowing multiple different writs at the same NPC to stack together in a single stop for faster rep per minute.
+- Cleaned up flight point labels by removing redundant zone names from capital cities and major towns (e.g., `Stormwind`, `Ironforge`, `Booty Bay`, `Ratchet`, `Gadgetzan`), while keeping zone names on outpost flight points.
+- Increased zone-border crossing weighting in the travel optimizer to avoid unnecessary zone hopping.
+
+### Fixed
+- Prevented stray TomTom / map waypoints from popping up when the Route Guide window is closed or inactive; closing the Route Guide now immediately clears its active waypoint.
+- Audited and corrected 8 Azeroth zone road-crossing coordinates (Thoradin's Wall between Hillsbrad and Arathi, Ashenvale↔Darkshore, Great Lift, Stormwind Gate, Redridge↔Burning Steppes, Searing Gorge↔Badlands, Hillsbrad↔Hinterlands, and Chillwind Pass), and removed an invalid land-road edge to Riverglades.
+
 ## [v1.0.0] - 2026-11-20
 
 ### Added

@@ -77,6 +77,10 @@ function Panel.AddWritTooltipLines(tip, row)
 		local sec = FWC.Writs.SecondsUntilReset()
 		tip:AddLine(sec and ("Already turned in today (resets in " .. FWC.FormatSpan(sec) .. ")") or "Already turned in today", 1, 0.25, 0.25)
 	end
+	if row.bagHopSecs then
+		local nearName = row.bagHopAnchor and row.bagHopAnchor.loc and row.bagHopAnchor.loc.zoneName or "bag writ"
+		tip:AddLine(string.format("Hop from bag writ (%s): +%s", nearName, FWC.FormatTime(row.bagHopSecs)), 0.25, 1, 0.5)
+	end
 	if row.travelSecs then
 		tip:AddLine(string.format("Est. travel time: ~%s (all flights & boats assumed)", FWC.FormatTime(row.travelSecs)), 0.4, 0.9, 1)
 	end
@@ -103,9 +107,16 @@ local function ActiveTab()
 	return (FWC.db and FWC.db.panelTab == "crates") and "crates" or "writs"
 end
 
+local SORT_CYCLE = { fastest = "nearbags", nearbags = "cheapest", cheapest = "fastest" }
+local SORT_LABELS = { fastest = "Sort: Fast", nearbags = "Sort: Bags", cheapest = "Sort: Cost" }
+
 local function WritSortMode()
-	return (FWC.db and FWC.db.writSort == "cheapest") and "cheapest" or "fastest"
+	local m = FWC.db and FWC.db.writSort
+	if m == "cheapest" or m == "nearbags" then return m end
+	return "fastest"
 end
+
+local lastBagAnchorCount = 0
 
 local function BuildRows()
 	local book = FWC.Prices()
@@ -115,21 +126,48 @@ local function BuildRows()
 
 	local rows = FWC.Valuation.EvaluateAllWrits(book)
 	local startPt = FWC.Travel.PlayerPoint()
+	local mode = WritSortMode()
+	local bagInfo = FWC.RoutePlanner.GetOwnedWritAnchors()
+	lastBagAnchorCount = (bagInfo and #bagInfo.anchors) or 0
+
 	for _, r in ipairs(rows) do
 		r.travelSecs = FWC.RoutePlanner.EstimateWritTravelSecs(r.writ, startPt)
+		r.isOwnedWrit = bagInfo.ownedIDs[r.writ.id] or false
+		if mode == "nearbags" and lastBagAnchorCount > 0 then
+			r.bagHopSecs, r.bagHopAnchor = FWC.RoutePlanner.MinTravelFromAnchors(r.writ, bagInfo)
+		end
 	end
 
 	local receipt = FWC.Valuation.EvaluateReceipt(book, FWC.Crates())
 	rows[#rows + 1] = receipt
 
-	if WritSortMode() == "fastest" then
+	local function CanBuyToday(r)
+		return (r.kind == "writ") and (r.score ~= nil)
+			and not r.isOwnedWrit and not FWC.Writs.IsTurnedInToday(r.writ)
+	end
+
+	if mode == "nearbags" and lastBagAnchorCount > 0 then
 		table.sort(rows, function(a, b)
-			-- Put available/listed writs with known travel time first, sorted by fastest travel time!
-			local aAvail = (a.kind == "writ") and (a.score ~= nil) and (a.travelSecs ~= nil) and not FWC.Writs.IsTurnedInToday(a.writ)
-			local bAvail = (b.kind == "writ") and (b.score ~= nil) and (b.travelSecs ~= nil) and not FWC.Writs.IsTurnedInToday(b.writ)
+			local aBuy = CanBuyToday(a) and (a.bagHopSecs ~= nil)
+			local bBuy = CanBuyToday(b) and (b.bagHopSecs ~= nil)
+			if aBuy ~= bBuy then return aBuy end
+			if aBuy and bBuy then
+				if math.abs(a.bagHopSecs - b.bagHopSecs) > 10 then
+					return a.bagHopSecs < b.bagHopSecs
+				end
+				return (a.score or math.huge) < (b.score or math.huge)
+			end
+			if (a.isOwnedWrit or false) ~= (b.isOwnedWrit or false) then return a.isOwnedWrit end
+			local ha, hb = a.bagHopSecs or math.huge, b.bagHopSecs or math.huge
+			if ha ~= hb then return ha < hb end
+			return (a.score or math.huge) < (b.score or math.huge)
+		end)
+	elseif mode == "fastest" or (mode == "nearbags" and lastBagAnchorCount == 0) then
+		table.sort(rows, function(a, b)
+			local aAvail = CanBuyToday(a) and (a.travelSecs ~= nil)
+			local bAvail = CanBuyToday(b) and (b.travelSecs ~= nil)
 			if aAvail ~= bAvail then return aAvail end
 			if aAvail and bAvail then
-				-- Travel efficiency: travel seconds per 100 rep (so 200-rep writs slightly beat 75-rep at same spot)
 				local ea = a.travelSecs / math.max(1, (a.rep or 75) / 100)
 				local eb = b.travelSecs / math.max(1, (b.rep or 75) / 100)
 				if math.abs(ea - eb) > 5 then return ea < eb end
@@ -141,7 +179,15 @@ local function BuildRows()
 			return (a.score or math.huge) < (b.score or math.huge)
 		end)
 	else
-		FWC.Valuation.SortByCost(rows)
+		table.sort(rows, function(a, b)
+			local aAvail = (a.kind == "receipt" and a.score ~= nil) or CanBuyToday(a)
+			local bAvail = (b.kind == "receipt" and b.score ~= nil) or CanBuyToday(b)
+			if aAvail ~= bAvail then return aAvail end
+			local sa = a.score or a.fillScore or math.huge
+			local sb = b.score or b.fillScore or math.huge
+			if sa ~= sb then return sa < sb end
+			return a.id < b.id
+		end)
 	end
 	return rows
 end
@@ -233,17 +279,29 @@ local function InitRow(btn, row)
 	local r, g, b = FWC.QualityColor(row.quality)
 
 	if row.kind == "writ" then
-		if FWC.Writs.IsAccepted(row.writ) then
+		local turnedIn = FWC.Writs.IsTurnedInToday(row.writ)
+		if FWC.Writs.IsAccepted(row.writ) or row.isOwnedWrit then
 			r, g, b = unpack(COLOR_ACCEPTED)
-		elseif FWC.Writs.IsTurnedInToday(row.writ) then
+		elseif turnedIn then
 			r, g, b = unpack(COLOR_TURNED_IN)
 		end
 		btn.Icon:SetTexture(info.icon or FWC.WRIT_ICON)
-		btn.Name:SetText(info.name or ("#" .. row.id))
+		local namePrefix = ""
+		if row.isOwnedWrit then
+			namePrefix = "|cff40ff40[In Bag]|r "
+		elseif turnedIn then
+			namePrefix = "|cff888888[Done]|r "
+		end
+		btn.Name:SetText(namePrefix .. (info.name or ("#" .. row.id)))
 		btn.Name:SetTextColor(r, g, b)
 
 		local priceStr = row.perHundred and ((row.estimate and "~" or "") .. FWC.FormatMoney(row.perHundred) .. "/100") or "-"
-		local timeStr = row.travelSecs and ("|cff66ddff" .. FWC.FormatTime(row.travelSecs) .. "|r  ") or ""
+		local timeStr
+		if row.bagHopSecs and WritSortMode() == "nearbags" and not row.isOwnedWrit then
+			timeStr = "|cff40ff80+" .. FWC.FormatTime(row.bagHopSecs) .. "|r  "
+		else
+			timeStr = row.travelSecs and ("|cff66ddff" .. FWC.FormatTime(row.travelSecs) .. "|r  ") or ""
+		end
 		btn.RightTop:SetText(timeStr .. priceStr)
 
 		if row.total then
@@ -373,14 +431,17 @@ local function EnsurePanel()
 	sortBtn:SetText("Fastest")
 	sortBtn:SetScript("OnClick", function()
 		if FWC.db then
-			FWC.db.writSort = (WritSortMode() == "fastest") and "cheapest" or "fastest"
+			FWC.db.writSort = SORT_CYCLE[WritSortMode()] or "fastest"
 		end
 		Panel.Refresh()
 	end)
 	sortBtn:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		GameTooltip:AddLine("Writ Sort Order", 1, 0.82, 0)
-		GameTooltip:AddLine("Toggle between Fastest Travel Time and Cheapest Gold per 100 Rep.", 1, 1, 1, true)
+		GameTooltip:AddLine("Click to cycle between:", 1, 1, 1)
+		GameTooltip:AddLine("• Sort: Fast — fastest travel from your current location", 0.4, 0.9, 1, true)
+		GameTooltip:AddLine("• Sort: Bags — closest in travel time to writs already in your bags/quest log", 0.25, 1, 0.5, true)
+		GameTooltip:AddLine("• Sort: Cost — cheapest gold per 100 reputation", 1, 0.85, 0.3, true)
 		GameTooltip:Show()
 	end)
 	sortBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -411,6 +472,7 @@ local function EnsurePanel()
 				(plan.questCount and plan.questCount > 0) and string.format(" + %d quest(s)", plan.questCount) or "",
 				FWC.FormatTime(plan.secs))
 		end
+		FWC.RoutePlanner.ReportSkipped(plan)
 	end)
 	bagBtn:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -474,10 +536,13 @@ function Panel.Refresh()
 	panelFrame.ScanBtn:SetText(FWC.Scanner.IsRunning() and "Stop" or "Scan")
 
 	local isWrits = (tab == "writs")
+	local mode = WritSortMode()
 	panelFrame.SortBtn:SetShown(isWrits)
 	if isWrits then
-		panelFrame.SortBtn:SetText(WritSortMode() == "fastest" and "Sort: Fast" or "Sort: Cost")
+		panelFrame.SortBtn:SetText(SORT_LABELS[mode] or "Sort: Fast")
 	end
+
+	local rows = panelFrame:IsShown() and BuildRows() or nil
 
 	local scanStatus = FWC.Scanner.StatusText()
 	if scanStatus then
@@ -485,9 +550,18 @@ function Panel.Refresh()
 	else
 		local book = FWC.PriceBook()
 		local line1 = book.at and ("Scanned " .. FWC.FormatAge(time() - book.at)) or "Not scanned yet."
-		local line2 = isWrits
-			and (WritSortMode() == "fastest" and "Sorted by fastest travel" or "Sorted by gold / 100 rep")
-			or "Sorted by gold / favor"
+		local line2
+		if not isWrits then
+			line2 = "Sorted by gold / favor"
+		elseif mode == "nearbags" then
+			line2 = (lastBagAnchorCount > 0)
+				and string.format("Closest to your %d bag writ(s)", lastBagAnchorCount)
+				or "No writs in bags (showing fastest)"
+		elseif mode == "fastest" then
+			line2 = "Sorted by fastest travel"
+		else
+			line2 = "Sorted by gold / 100 rep"
+		end
 		panelFrame.Status:SetText(line1 .. "\n" .. line2)
 	end
 
@@ -505,8 +579,8 @@ function Panel.Refresh()
 	if not panelFrame:IsShown() then return end
 	ResizeTabs(panelFrame)
 
-	if panelFrame.ScrollBox and CreateDataProvider then
-		panelFrame.ScrollBox:SetDataProvider(CreateDataProvider(BuildRows()), true)
+	if panelFrame.ScrollBox and CreateDataProvider and rows then
+		panelFrame.ScrollBox:SetDataProvider(CreateDataProvider(rows), true)
 	end
 end
 

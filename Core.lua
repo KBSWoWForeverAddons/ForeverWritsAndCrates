@@ -132,7 +132,7 @@ function FWC.InitDB()
 	db.version = 1
 	if db.panelShown == nil then db.panelShown = true end
 	if db.panelTab ~= "writs" and db.panelTab ~= "crates" then db.panelTab = "writs" end
-	if db.writSort ~= "fastest" and db.writSort ~= "cheapest" then db.writSort = "fastest" end
+	if db.writSort ~= "fastest" and db.writSort ~= "cheapest" and db.writSort ~= "nearbags" then db.writSort = "fastest" end
 	if db.autoQuest == nil then db.autoQuest = true end
 	if db.includeCompletedQuests == nil then db.includeCompletedQuests = true end
 	db.realms = type(db.realms) == "table" and db.realms or {}
@@ -921,6 +921,7 @@ SlashCmdList["FOREVERWRITS"] = function(msg)
 					(plan.questCount and plan.questCount > 0) and string.format(" + %d quest(s)", plan.questCount) or "",
 					FWC.FormatTime(plan.secs))
 			end
+			FWC.RoutePlanner.ReportSkipped(plan)
 		end
 	elseif cmd == "quests" then
 		FWC.db.includeCompletedQuests = not FWC.db.includeCompletedQuests
