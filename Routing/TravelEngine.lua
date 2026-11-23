@@ -495,7 +495,11 @@ function Travel.GetTeleports()
 		if n.fpID then byID[n.fpID] = n end
 	end
 
-	local _, classToken = UnitClass and UnitClass("player")
+	local classToken
+	if UnitClass then
+		local _, tok = UnitClass("player")
+		classToken = tok
+	end
 	local playerLevel = (UnitLevel and UnitLevel("player")) or 60
 	local side = FWC.Rep.PlayerSide()
 
@@ -545,7 +549,7 @@ function Travel.GetTeleports()
 
 	-- 3. Druid: Teleport: Moonglade (spell 18960, no cooldown)
 	if classToken == "DRUID" and (IsSpellKnownSafe(18960) or playerLevel >= 10) then
-		local dest = Travel.Point(1450, 56.0, 32.0)
+		local dest = Travel.Point(1450, 54.0, 32.0)
 		if dest then
 			list[#list + 1] = {
 				key = "moonglade",

@@ -211,11 +211,29 @@ local function OptimizeOrder(startPt, stops)
 	local pts = { startPt }
 	for i, s in ipairs(stops) do pts[i + 1] = s.pos end
 
+	local freeTeleports = {}
+	for _, tp in ipairs(FWC.Travel.GetTeleports() or {}) do
+		if (tp.cd or 0) == 0 and (tp.ready or 0) <= 0 and tp.dest then
+			freeTeleports[#freeTeleports + 1] = tp
+		end
+	end
+
 	local T = {}
 	for i = 1, n + 1 do
 		T[i] = {}
 		for j = 1, n + 1 do
-			T[i][j] = (i == j) and 0 or FWC.Travel.Time(pts[i], pts[j])
+			if i == j then
+				T[i][j] = 0
+			else
+				local t = FWC.Travel.Time(pts[i], pts[j])
+				for _, tp in ipairs(freeTeleports) do
+					if not pts[i] or pts[i].map ~= tp.dest.map then
+						local via = (tp.cast or 15) + FWC.Travel.Time(tp.dest, pts[j])
+						if via < t then t = via end
+					end
+				end
+				T[i][j] = t
+			end
 		end
 	end
 

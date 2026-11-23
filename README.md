@@ -1,4 +1,4 @@
-# Forever Writs and Crates (`v1.2.0`)
+# Forever Writs and Crates (`v1.2.1`)
 
 A World of Warcraft: Forever addon for **Waylaid Crates** and **Craftsman's Writs** (Azeroth Commerce Authority / Durotar Supply and Logistics).
 

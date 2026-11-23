@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.2.1] - 2026-11-23
+
+### Changed
+- Updated route stop optimization to account for zero-cooldown class teleports (`Teleport: Moonglade` and Mage city teleports), ordering stops from the teleport arrival point instead of the zone's flight master.
+- Adjusted Druid `Teleport: Moonglade` arrival coordinates to `(54.0, 32.0)` in Nighthaven for accurate local turn-in ordering.
+
+### Fixed
+- Fixed class detection in the travel engine so Druid `Teleport: Moonglade`, Mage city teleports, and Shaman `Astral Recall` are properly detected and suggested in routes.
+
 ## [v1.2.0] - 2026-11-21
 
 ### Added
