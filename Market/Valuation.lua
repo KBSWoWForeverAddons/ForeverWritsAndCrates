@@ -89,8 +89,30 @@ function V.BundleQuote(book, bundle)
 	return best
 end
 
+function V.CrateBagProgress(crate)
+	local bagCount = FWC.BagCount(crate.id)
+	if bagCount <= 0 then
+		return { bagCount = 0, covered = 0, remaining = 0 }
+	end
+	local fillable = 0
+	for _, bundle in ipairs(crate.bundles or {}) do
+		local need = bundle.count or 1
+		if need > 0 then
+			for _, matID in ipairs(bundle.items or {}) do
+				local have = FWC.TotalOwnedCount and FWC.TotalOwnedCount(matID) or FWC.BagCount(matID)
+				if have >= need then
+					fillable = fillable + math.floor(have / need)
+				end
+			end
+		end
+	end
+	local covered = math.min(bagCount, fillable)
+	return { bagCount = bagCount, covered = covered, remaining = math.max(0, bagCount - covered) }
+end
+
 function V.EvaluateCrate(book, crate)
 	local row = { kind = "crate", crate = crate, id = crate.id, bundles = {} }
+	row.bagProgress = V.CrateBagProgress(crate)
 	local best
 	for i, bundle in ipairs(crate.bundles or {}) do
 		local q = V.BundleQuote(book, bundle)
@@ -228,7 +250,17 @@ function V.EvaluateOwnedCrates(book)
 		row.estimate = (row.fill ~= nil and row.fill.cost ~= nil and not row.fill.exact)
 		rows[#rows + 1] = row
 	end
-	return V.SortByCost(rows)
+	table.sort(rows, function(a, b)
+		local aNeed = (a.bagProgress and a.bagProgress.remaining or 0) > 0
+		local bNeed = (b.bagProgress and b.bagProgress.remaining or 0) > 0
+		if aNeed ~= bNeed then return aNeed end
+		local ca = a.fill and a.fill.cost or nil
+		local cb = b.fill and b.fill.cost or nil
+		if (ca ~= nil) ~= (cb ~= nil) then return ca ~= nil end
+		if ca and cb and ca ~= cb then return ca < cb end
+		return a.id < b.id
+	end)
+	return rows
 end
 
 function V.EvaluateAllWrits(book)

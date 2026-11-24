@@ -44,12 +44,28 @@ end
 
 local function ItemWithOwned(itemID, count)
 	local text = string.format("%d x %s", count, FWC.ItemName(itemID))
-	local have = FWC.BagCount(itemID)
-	if have > 0 then text = text .. string.format(" (have %d)", have) end
+	local inBag = FWC.BagCount(itemID)
+	local inMail = FWC.InMailCount and FWC.InMailCount(itemID) or 0
+	if inBag > 0 and inMail > 0 then
+		text = text .. string.format(" (have %d + %d mail)", inBag, inMail)
+	elseif inBag > 0 then
+		text = text .. string.format(" (have %d)", inBag)
+	elseif inMail > 0 then
+		text = text .. string.format(" (%d in mail)", inMail)
+	end
 	return text
 end
 
 function Panel.AddCrateTooltipLines(tip, row)
+	local bp = row.bagProgress
+	if bp and bp.bagCount > 0 then
+		if bp.remaining > 0 then
+			tip:AddLine(string.format("In your bags: %d crate(s) — %d covered (bags/mail), %d still need mats",
+				bp.bagCount, bp.covered, bp.remaining), 1, 0.85, 0.25, true)
+		else
+			tip:AddLine(string.format("In your bags: %d crate(s) — all covered by bags/AH mail!", bp.bagCount), 0.25, 1, 0.4, true)
+		end
+	end
 	if row.bagCount and row.bagCount > 0 then
 		tip:AddLine(string.format("In bags: %d unfilled crate%s", row.bagCount, row.bagCount == 1 and "" or "s"), 0.25, 1, 0.5)
 	end
@@ -335,8 +351,16 @@ local function InitRow(btn, row)
 
 	elseif row.kind == "crate" then
 		btn.Icon:SetTexture(info.icon or FWC.CRATE_ICON)
+		local bp = row.bagProgress
 		local namePrefix = ""
-		if row.bagCount and row.bagCount > 0 then
+		if bp and bp.bagCount > 0 then
+			if bp.remaining > 0 then
+				namePrefix = string.format("|cffffd100[%d to fill]|r ", bp.remaining)
+			else
+				namePrefix = string.format("|cff40ff40[%d Ready]|r ", bp.bagCount)
+				r, g, b = 0.55, 0.85, 0.55
+			end
+		elseif row.bagCount and row.bagCount > 0 then
 			namePrefix = (row.bagCount > 1)
 				and string.format("|cff40ff40[In Bag x%d]|r ", row.bagCount)
 				or "|cff40ff40[In Bag]|r "
@@ -624,7 +648,7 @@ function Panel.Refresh()
 			if cMode == "bags" then
 				local n = rows and #rows or #FWC.OwnedCrates()
 				line2 = (n > 0)
-					and string.format("Bag crates (%d): best fill / favor", n)
+					and string.format("Bag crates (%d): lowest fill cost", n)
 					or "No unfilled crates in bags"
 			else
 				line2 = "Sorted by gold / favor"

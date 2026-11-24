@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.2.2] - 2026-11-23
+
+### Added
+- Live Auction House purchase tracking (including items still sitting in your mailbox) that automatically counts down how many crates in your bags still need materials (`[3 to fill]` → `[2 to fill]` → `[3 Ready]`) so you don't over- or under-buy mats.
+- Material tooltips and crate rows now show both bag and in-mail counts (e.g., `(20 in mail)` or `(have 10 + 10 mail)`), clearing automatically once you collect your mail.
+
+### Changed
+- **Show: Bags** on the Auction House **Crates** tab now sorts strictly from lowest to highest total fill cost, keeping crates that still need materials pinned above `[Ready]` crates.
+
 ## [v1.2.1] - 2026-11-23
 
 ### Changed

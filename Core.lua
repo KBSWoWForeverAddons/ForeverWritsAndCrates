@@ -152,6 +152,7 @@ function FWC.InitDB()
 	cdb.route = type(cdb.route) == "table" and cdb.route or {}
 	cdb.manualSteps = type(cdb.manualSteps) == "table" and cdb.manualSteps or {}
 	cdb.questSelection = type(cdb.questSelection) == "table" and cdb.questSelection or {}
+	cdb.purchasedInMail = type(cdb.purchasedInMail) == "table" and cdb.purchasedInMail or {}
 	if cdb.pendingMail == nil then cdb.pendingMail = false end
 	if cdb.guideShown == nil then cdb.guideShown = false end
 	FWC.charDB = cdb
@@ -380,6 +381,15 @@ function FWC.BagCount(id)
 		return C_Item.GetItemCount(id) or 0
 	end
 	return 0
+end
+
+function FWC.InMailCount(id)
+	if not (id and FWC.charDB and type(FWC.charDB.purchasedInMail) == "table") then return 0 end
+	return FWC.charDB.purchasedInMail[id] or 0
+end
+
+function FWC.TotalOwnedCount(id)
+	return FWC.BagCount(id) + FWC.InMailCount(id)
 end
 
 local function OnItemLoaded(itemID, success)
@@ -775,11 +785,53 @@ end)
 --------------------------------------------------------------------------------
 local AUCTION_WON_PAT = (ERR_AUCTION_WON_S and ERR_AUCTION_WON_S:gsub("%%s", ".+")) or "You won an auction"
 local mailboxWasOpened = false
+local pendingPurchase = nil
+local purchaseHooksInstalled = false
 
 local function MarkPendingMail()
 	if not FWC.charDB then return end
 	FWC.charDB.pendingMail = true
 	FWC.RefreshUI()
+end
+
+local function CreditPendingPurchase()
+	if not (pendingPurchase and FWC.charDB) then return end
+	if (GetTime() - (pendingPurchase.at or 0)) <= 15 and pendingPurchase.itemID and pendingPurchase.qty > 0 then
+		FWC.charDB.purchasedInMail = FWC.charDB.purchasedInMail or {}
+		FWC.charDB.purchasedInMail[pendingPurchase.itemID] =
+			(FWC.charDB.purchasedInMail[pendingPurchase.itemID] or 0) + pendingPurchase.qty
+	end
+	pendingPurchase = nil
+	MarkPendingMail()
+end
+
+local function InstallPurchaseHooks()
+	if purchaseHooksInstalled or not (hooksecurefunc and C_AuctionHouse) then return end
+	purchaseHooksInstalled = true
+	if C_AuctionHouse.StartCommoditiesPurchase then
+		hooksecurefunc(C_AuctionHouse, "StartCommoditiesPurchase", function(itemID, quantity)
+			if type(itemID) == "number" and type(quantity) == "number" and quantity > 0 then
+				pendingPurchase = { itemID = itemID, qty = quantity, at = GetTime() }
+			end
+		end)
+	end
+	if C_AuctionHouse.ConfirmCommoditiesPurchase then
+		hooksecurefunc(C_AuctionHouse, "ConfirmCommoditiesPurchase", function(itemID, quantity)
+			if type(itemID) == "number" and type(quantity) == "number" and quantity > 0 then
+				pendingPurchase = { itemID = itemID, qty = quantity, at = GetTime() }
+			end
+		end)
+	end
+	if C_AuctionHouse.PlaceBid then
+		hooksecurefunc(C_AuctionHouse, "PlaceBid", function()
+			local ah = AuctionHouseFrame
+			local buy = ah and ah.ItemBuyFrame
+			local key = buy and buy.itemKey
+			if type(key) == "table" and type(key.itemID) == "number" then
+				pendingPurchase = { itemID = key.itemID, qty = 1, at = GetTime() }
+			end
+		end)
+	end
 end
 
 function FWC.HasPendingAuctionMail(route)
@@ -795,7 +847,11 @@ function FWC.HasPendingAuctionMail(route)
 	return false
 end
 
-FWC.On("AUCTION_HOUSE_PURCHASE_COMPLETED", MarkPendingMail)
+FWC.On("AUCTION_HOUSE_SHOW", InstallPurchaseHooks)
+FWC.On("PLAYER_LOGIN", InstallPurchaseHooks)
+FWC.On("COMMODITY_PURCHASE_SUCCEEDED", CreditPendingPurchase)
+FWC.On("AUCTION_HOUSE_PURCHASE_COMPLETED", CreditPendingPurchase)
+FWC.On("COMMODITY_PURCHASE_FAILED", function() pendingPurchase = nil end)
 FWC.On("CHAT_MSG_SYSTEM", function(msg)
 	if type(msg) == "string" and (msg:find(AUCTION_WON_PAT) or msg:find("You won an auction", 1, true)) then
 		MarkPendingMail()
@@ -804,20 +860,29 @@ end)
 FWC.On("MAIL_SHOW", function()
 	mailboxWasOpened = true
 	if GetInboxNumItems and (GetInboxNumItems() or 0) == 0 then
-		if FWC.charDB then FWC.charDB.pendingMail = false end
+		if FWC.charDB then
+			FWC.charDB.pendingMail = false
+			wipe(FWC.charDB.purchasedInMail)
+		end
 		FWC.RefreshUI()
 	end
 end)
 FWC.On("MAIL_INBOX_UPDATE", function()
 	if mailboxWasOpened and GetInboxNumItems and (GetInboxNumItems() or 0) == 0 then
-		if FWC.charDB then FWC.charDB.pendingMail = false end
+		if FWC.charDB then
+			FWC.charDB.pendingMail = false
+			wipe(FWC.charDB.purchasedInMail)
+		end
 		FWC.RefreshUI()
 	end
 end)
 FWC.On("MAIL_CLOSED", function()
 	if mailboxWasOpened then
 		mailboxWasOpened = false
-		if FWC.charDB then FWC.charDB.pendingMail = false end
+		if FWC.charDB then
+			FWC.charDB.pendingMail = false
+			wipe(FWC.charDB.purchasedInMail)
+		end
 		FWC.RefreshUI()
 	end
 end)
