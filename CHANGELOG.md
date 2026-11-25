@@ -1,5 +1,13 @@
 # Changelog
 
+## [v1.2.3] - 2026-11-25
+
+### Changed
+- Left-clicking the minimap button while the Auction House is open now toggles the **AH Scan Panel** directly (Shift+Left-click opens the Planner; Right-click toggles the Route Guide).
+
+### Fixed
+- Anchored the **Writs & Crates** Auction House toggle button to `TitleContainer` above the close button's frame level so it stays visible on every Auction House tab (including Auctionator and Sell/Auctions tabs).
+
 ## [v1.2.2] - 2026-11-23
 
 ### Added

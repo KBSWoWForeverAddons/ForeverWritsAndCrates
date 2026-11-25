@@ -2,7 +2,7 @@
 ## Title: Forever Writs and Crates
 ## Notes: Auction house helper, price scanner, auto-goal reputation/favor planner, and travel route guide for Waylaid Crates and Craftsman's Writs on WoW: Forever.
 ## Author: Kathorgan
-## Version: 1.2.2
+## Version: 1.2.3
 ## X-Curse-Project-ID: 1819969
 ## IconTexture: Interface\Icons\INV_Crate_07
 ## OptionalDeps: Auctionator, TomTom

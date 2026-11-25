@@ -55,6 +55,8 @@ local function CreateButton()
 	b:SetScript("OnClick", function(_, mouse)
 		if mouse == "RightButton" then
 			if FWC.RouteGuide then FWC.RouteGuide.Toggle() end
+		elseif FWC.AuctionHouseOpen() and FWC.AuctionPanel and not IsShiftKeyDown() then
+			FWC.AuctionPanel.Toggle()
 		else
 			if FWC.PlannerWindow then FWC.PlannerWindow.Toggle() end
 		end
@@ -63,7 +65,12 @@ local function CreateButton()
 	b:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
 		GameTooltip:AddLine("Forever Writs and Crates", 1, 0.82, 0)
-		GameTooltip:AddLine("Left-click: Open Planner & Calculator", 1, 1, 1)
+		if FWC.AuctionHouseOpen() then
+			GameTooltip:AddLine("Left-click: Toggle AH Scan Panel", 0.4, 1, 0.5)
+			GameTooltip:AddLine("Shift+Left-click: Open Planner & Calculator", 1, 1, 1)
+		else
+			GameTooltip:AddLine("Left-click: Open Planner & Calculator", 1, 1, 1)
+		end
 		GameTooltip:AddLine("Right-click: Toggle Route Guide", 1, 1, 1)
 		GameTooltip:AddLine("Drag: Move button", 0.7, 0.7, 0.7)
 		GameTooltip:Show()

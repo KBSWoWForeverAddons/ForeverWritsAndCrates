@@ -409,20 +409,25 @@ end
 local function EnsureButton()
 	if toggleBtn or not AuctionHouseFrame then return toggleBtn end
 	local ah = AuctionHouseFrame
-	local parent = ah.SearchBar or ah
+	-- Parent to TitleContainer (or AuctionHouseFrame) above CloseButton's frame level
+	-- so NineSlice / TitleContainer artwork never covers it, on every AH tab.
+	local parent = ah.TitleContainer or ah
 	local b = CreateFrame("Button", "FWC_AuctionToggleBtn", parent, "UIPanelButtonTemplate")
-	b:SetSize(106, 22)
-	if ah.SearchBar then
-		b:SetPoint("RIGHT", ah.SearchBar, "LEFT", -6, 0)
+	b:SetSize(106, 20)
+	if ah.CloseButton then
+		b:SetPoint("RIGHT", ah.CloseButton, "LEFT", -4, 0)
+		b:SetFrameLevel((ah.CloseButton:GetFrameLevel() or 500) + 5)
 	else
-		b:SetPoint("TOPRIGHT", ah, "TOPRIGHT", -40, -30)
+		b:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -28, -2)
+		b:SetFrameLevel(520)
 	end
 	b:SetText("Writs & Crates")
+	b:Show()
 	b:SetScript("OnClick", function() Panel.Toggle() end)
 	b:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		GameTooltip:AddLine("Forever Writs and Crates", 1, 0.82, 0)
-		GameTooltip:AddLine("Toggle the Writs & Crates Auction House side panel.", 1, 1, 1, true)
+		GameTooltip:AddLine("Show or hide the Writs & Crates Auction House side panel.", 1, 1, 1, true)
 		GameTooltip:Show()
 	end)
 	b:SetScript("OnLeave", function() GameTooltip:Hide() end)
